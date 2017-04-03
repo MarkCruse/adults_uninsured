@@ -1,0 +1,204 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>US Counties Uninsured</title>
+
+    <link href="http://fonts.googleapis.com/css?family=Montserrat" rel="stylesheet" type="text/css">
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+            background: whitesmoke;
+            font-family: Montserrat, sans-serif;
+            border: 1px;
+        }
+        b {
+            font-weight: bold;
+        }
+        h1, h2, h3, p {
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            font-size: 2em;
+            font-weight: 100;
+            color: #662002;
+        }
+        p {
+            top:750px;
+            left: 60px;
+            font-size: .9em;
+            font-weight: 80;
+            color: #662002;
+        }
+        h2 {
+            top: 100px;
+            left: 30px;
+            font-size: 1.2em;
+        }
+        h3 {
+            top: 140px;
+            left: 30px;
+            font-size: 0.85em;
+        }
+        #map {
+            width: 900px;
+            height: 600px;
+            margin: 100px auto;
+            border: 1px solid #d3d3d3;
+        }
+        .county {
+            stroke: #e5e5e5;
+        }
+        .hover{
+            fill: yellow;
+        }
+        .legend {
+            font-size: 11px;
+        }
+        div.tooltip {
+            position: absolute;
+            text-align: center;
+            width: absolute;
+            height: 15px;
+            padding: 2px;
+            font-size: 12px;
+            background: #FFFFE0;
+            border: 1px;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+  <div id = "map"></div>
+  <h1>2016 Adult Uninsured Rates</h1>
+  <h2></h2>
+  <h3></h3>
+  <p>
+    <b>About:</b>&nbsp;&nbsp;Since the Affordable Care Act took effect, millions of Americans have been able to sign up for quality,
+    affordable health insurance. The data represented <br/>in this map shows the 2016 non-elderly adult uninsured rates in each county across the United States.
+    <br/><br/>
+    <b>Data source:&nbsp;&nbsp;</b><a href="https://www.enrollamerica.org">Enroll America</a>
+    <br/><br/>
+    <b>Map designed by:</b>&nbsp;&nbsp;Mark Cruse - March 2017
+  </p>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/queue-async/1.0.7/queue.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.19/topojson.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-statistics/0.9.0/simple_statistics.min.js"></script>
+  <script>
+
+  var width = 900, height = 600;
+
+  var div = d3.select("body").append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0);
+
+  var svg = d3.select( "#map" )             // put svg in the map div element
+          .append( "svg" )                  // create and append a new svg element to it
+          .attr( "width", width )           // give the svg width
+          .attr( "height", height );        // give the svg height
+          var projection = d3.geo.albersUsa()     // create a new d3 projection function, albers equal area
+              .scale(1200)                        // play with the scale until it's 'zoomed' about right
+              .translate([width / 2, height / 2]);   // center the svg (0,0 is top, left)
+          var geoPath = d3.geo.path()     //  create a new geo path generator
+              .projection(projection);    // assign the project we just created to it
+
+          queue()
+              .defer(d3.json, "https://mcruse.cartodb.com/api/v2/sql?format=GeoJSON&q=SELECT * FROM uninsured_county_data_2016_combo")
+
+              .await(makeMap);            //sends error and the next item in function
+
+              //function makeMap(error, counties, na){
+          function makeMap(error, counties){
+              //console.log(counties);
+              var ext_breaks = ss.jenks(counties.features.map(function(d) {
+                  return d.properties.uninsured_rate_2016;
+              }), 5);
+              var breaks = ss.jenks(counties.features.map(function(d) {
+                  return d.properties.uninsured_rate_2016;
+              }), 5);
+
+              //breaks.shift();  // remove min value from breaks Array before applying to domain
+              breaks.pop();   // same for max
+              //console.log(breaks);
+              var colors = ["#ffffd4","#fee391","#fec44f","#fe9929","#d95f0e","#993404"];
+              var legend_labels = ["< " + breaks[1]+"%", breaks[1]+"%+", breaks[2]+"%+", breaks[3]+"%+", breaks[4]+"%+"]
+
+
+              var jenks = d3.scale.threshold()
+                  .domain(breaks)
+                  .range(colors);
+
+              // load the county features from either json or topoJSON data and append to map
+              svg.append("g")                 // create and append a new SVG 'g' element to the svg
+                  .selectAll("path")          // selectAll the path features that haven't been created yet
+                  .data(counties.features)    // bind the GeoJSON features data to them  **used only with geojson fikes
+                  .enter()                    // prepare to
+                  .append("path")             // append the newly create path elements to the 'g'
+                  .attr( "d", geoPath )       // define the screen coordinates of the new path(s)
+                  .attr("class", "county")    // give each a class name of 'county'
+                  .attr( "fill", function(d){
+                      // return some color here return based upon an attribute value
+                      return jenks(d.properties.uninsured_rate_2016)
+                  })
+                  .on("mouseover", function(d){   // listener for objects
+                      d3.select(this).transition().duration(300).style("opacity", 1);
+                      // tooltip starts here
+                      div.transition().duration(300)
+                          .style("opacity", 1)
+                          div.text(d.properties.name + ' County: ' + d.properties.uninsured_rate_2016+'%')
+                          .style("left", (d3.event.pageX) + "px")
+                          .style("top", (d3.event.pageY - 30) + "px");
+                          //tooltip ends
+                          d3.select("h2").text(d.properties.name + ' County, '+ d.properties.state_abbrev);  //insert the name of the county hovered over into the h2 element
+                          d3.select("h3").text(d.properties.decrease_2013_to_2016*-1 + '% decrease from 2013');  //insert the name of the county hovered over into the h2 element
+                          d3.select(this).attr("class","county hover"); //apply CSS class rules to h2
+                      })
+                      .on("mouseout", function(d){
+                          d3.select(this)
+                              .transition().duration(300)
+                              .style("opacity", 0.8);
+                          div.transition().duration(300)
+                              .style("opacity", 0);
+                              d3.select("h2").text("");
+                              d3.select(this).attr("class", "county");
+                              d3.select("h3").text("");
+                              d3.select(this).attr("class", "county");
+                      });
+
+                  var legend = svg.selectAll("g.legend")
+                      .data(breaks)
+                      .enter().append("g")
+                      .attr("class", "legend");
+
+                  var ls_w = 20,    //width of legend
+                      ls_h = 20;    //height of legend
+
+                  legend.append("rect")
+                      .attr("x", width-70)    //location of legend on map
+                      .attr("y", function(d, i) {
+                          return height - (i * ls_h) - 2 * ls_h;
+                      })
+                      .attr("width", ls_w)
+                      .attr("height", ls_h)
+                      .style("fill", function(d, i) {
+                          return jenks(d);
+                      })
+                      .style("opacity", 0.8);
+
+                  legend.append("text")
+                      .attr("x", width-40)    //location of legend text on map
+                      .attr("y", function(d, i) {
+                          return height - (i * ls_h) - ls_h - 4;
+                      })
+                      .text(function(d, i) {
+                          return legend_labels[i];
+                      });
+          };
+
+
+  </script>
+</body>
+</html>
